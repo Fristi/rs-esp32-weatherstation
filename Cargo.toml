@@ -1,0 +1,15 @@
+[package]
+name = "esp32_ssd1306"
+version = "0.1.0"
+authors = ["Mark de Jong <Fristi@users.noreply.github.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+esp-hal = { package = "esp32-hal", version = "0.11.0" }
+#esp32-hal = { git = "https://github.com/esp-rs/esp-hal" }
+esp-backtrace = { version = "0.6.0", features = ["esp32", "panic-handler", "print-uart"] }
+esp-println       = { version = "0.4.0", features = ["esp32"] }
+esp-alloc = { version = "0.2.0", features = ["oom-handler"] }
+embedded-graphics = "0.7.1"
+ssd1306           = "0.7.1"
