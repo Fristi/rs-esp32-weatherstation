@@ -34,6 +34,7 @@ use nb::block;
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 
 
+
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
@@ -59,7 +60,7 @@ fn main() -> ! {
 
     // Create a new peripheral object with the described wiring
     // and standard I2C clock speed
-    let i2c = I2C::new(
+    let i2c_led = I2C::new(
         peripherals.I2C0,
         io.pins.gpio21,
         io.pins.gpio22,
@@ -67,6 +68,16 @@ fn main() -> ! {
         &mut system.peripheral_clock_control,
         &clocks,
     );
+
+    let i2c_sensors = I2C::new(
+        peripherals.I2C1,
+        io.pins.gpio32,
+        io.pins.gpio33,
+        10u32.kHz(),
+        &mut system.peripheral_clock_control,
+        &clocks,
+    );
+
 
     println!("Initialized i2c");
 
@@ -76,7 +87,7 @@ fn main() -> ! {
     println!("Starting timer");
 
     // Initialize display
-    let interface = I2CDisplayInterface::new(i2c);
+    let interface = I2CDisplayInterface::new(i2c_led);
     println!("Connected display via i2c");
 
     let mut display = Ssd1306::new(interface, DisplaySize128x32, DisplayRotation::Rotate0)
@@ -105,7 +116,7 @@ fn main() -> ! {
         // Fill display bufffer with a centered text with two lines (and two text
         // styles)
         Text::with_alignment(
-            "esp-hal",
+            "vectos.net",
             display.bounding_box().center() + Point::new(0, 0),
             text_style_big,
             Alignment::Center,
