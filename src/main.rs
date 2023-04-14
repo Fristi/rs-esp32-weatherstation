@@ -72,14 +72,26 @@ fn main() -> ! {
 
     loop {
         let tvoc = read_tvoc(bus.acquire_i2c(), &mut delay).unwrap();
-        println!("Reading: {:?}", tvoc);
-
         let mut buffer_line = [0_u8; 20];
         let line = show(&mut buffer_line, format_args!("{:?} bbp", tvoc)).unwrap();
 
         write_display(bus.acquire_i2c(), "Gas reading", line);
         delay.delay_ms(2_000_u32);
+
+        let res = read_res(bus.acquire_i2c(), &mut delay).unwrap();
+
+        let line = show(&mut buffer_line, format_args!("{:?} ohm", res)).unwrap();
+
+        write_display(bus.acquire_i2c(), "Gas resistance", line);
+        delay.delay_ms(2_000_u32);
     }
+}
+
+fn read_res<I>(i2c: I, delay: &mut Delay) -> Result<u32, Ags02maError> where I : Write + Read {
+    let delay_share = DelayShare::new(delay);
+    let mut ags02ma = Ags02ma { i2c: i2c, delay: delay_share };
+
+    ags02ma.read_gas()
 }
 
 fn read_tvoc<I>(i2c: I, delay: &mut Delay) -> Result<u32, Ags02maError> where I : Write + Read {
