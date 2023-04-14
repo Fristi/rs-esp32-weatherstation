@@ -10,6 +10,13 @@
 #![no_std]
 #![no_main]
 
+
+mod ags02ma;
+mod delayshare;
+
+use ags02ma::*;
+use delayshare::*;
+
 use embedded_graphics::{
     mono_font::{
         ascii::{FONT_6X10, FONT_9X18_BOLD},
@@ -19,34 +26,27 @@ use embedded_graphics::{
     prelude::*,
     text::{Alignment, Text},
 };
-use esp_hal::{
-    clock::ClockControl,
-    gpio::IO,
-    i2c::I2C,
-    peripherals::Peripherals,
-    prelude::*,
-    timer::TimerGroup,
-    Rtc
-};
+use esp_hal::{clock::ClockControl, gpio::IO, i2c::I2C, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rtc, Delay};
 use esp_backtrace as _;
+use esp_hal::ehal::blocking::i2c::{Read, Write};
 use esp_println::println;
-use nb::block;
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
-
-
+use shared_bus::*;
+use format_no_std::show;
 
 #[entry]
 fn main() -> ! {
     let peripherals = Peripherals::take();
     let mut system = peripherals.DPORT.split();
     let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    let mut delay = Delay::new(&clocks);
 
     let timer_group0 = TimerGroup::new(
         peripherals.TIMG0,
         &clocks,
         // &mut system.peripheral_clock_control,
     );
-    let mut timer0 = timer_group0.timer0;
+
     let mut wdt = timer_group0.wdt;
     let mut rtc = Rtc::new(peripherals.RTC_CNTL);
 
@@ -56,51 +56,45 @@ fn main() -> ! {
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
-    println!("Initialized timer group, rtc, wdt");
-
     // Create a new peripheral object with the described wiring
     // and standard I2C clock speed
-    let i2c_led = I2C::new(
+    let i2c = I2C::new(
         peripherals.I2C0,
         io.pins.gpio21,
         io.pins.gpio22,
-        100u32.kHz(),
+        30u32.kHz(),
         &mut system.peripheral_clock_control,
         &clocks,
     );
 
-    let i2c_sensors = I2C::new(
-        peripherals.I2C1,
-        io.pins.gpio32,
-        io.pins.gpio33,
-        10u32.kHz(),
-        &mut system.peripheral_clock_control,
-        &clocks,
-    );
+    let bus = BusManagerSimple::new(i2c);
 
 
-    println!("Initialized i2c");
+    loop {
+        let tvoc = read_tvoc(bus.acquire_i2c(), &mut delay).unwrap();
+        println!("Reading: {:?}", tvoc);
 
-    // Start timer (5 second interval)
-    timer0.start(5u64.secs());
+        let mut buffer_line = [0_u8; 20];
+        let line = show(&mut buffer_line, format_args!("{:?} bbp", tvoc)).unwrap();
 
-    println!("Starting timer");
+        write_display(bus.acquire_i2c(), "Gas reading", line);
+        delay.delay_ms(2_000_u32);
+    }
+}
 
-    // Initialize display
-    let interface = I2CDisplayInterface::new(i2c_led);
-    println!("Connected display via i2c");
+fn read_tvoc<I>(i2c: I, delay: &mut Delay) -> Result<u32, Ags02maError> where I : Write + Read {
+    let delay_share = DelayShare::new(delay);
+    let mut ags02ma = Ags02ma { i2c: i2c, delay: delay_share };
 
+    ags02ma.read_tvoc()
+}
+
+fn write_display<I>(i2c: I, big_text: &str, small_text: &str) where I : Write {
+    let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(interface, DisplaySize128x32, DisplayRotation::Rotate0)
         .into_buffered_graphics_mode();
 
-    println!("new ssd1306");
-
-    match display.init() {
-        Err(err) => println!("Display err {:?}", err),
-        Ok(_) => ()
-    };
-
-    println!("Initialized display");
+    display.init().unwrap();
 
     // Specify different text styles
     let text_style = MonoTextStyleBuilder::new()
@@ -112,51 +106,28 @@ fn main() -> ! {
         .text_color(BinaryColor::On)
         .build();
 
-    loop {
-        // Fill display bufffer with a centered text with two lines (and two text
-        // styles)
-        Text::with_alignment(
-            "vectos.net",
-            display.bounding_box().center() + Point::new(0, 0),
-            text_style_big,
-            Alignment::Center,
-        )
-            .draw(&mut display)
-            .unwrap();
+    // Fill display bufffer with a centered text with two lines (and two text
+    // styles)
+    Text::with_alignment(
+        big_text,
+        display.bounding_box().center() + Point::new(0, 0),
+        text_style_big,
+        Alignment::Center,
+    )
+        .draw(&mut display)
+        .unwrap();
 
-        Text::with_alignment(
-            "Chip: ESP32",
-            display.bounding_box().center() + Point::new(0, 14),
-            text_style,
-            Alignment::Center,
-        )
-            .draw(&mut display)
-            .unwrap();
+    Text::with_alignment(
+        small_text,
+        display.bounding_box().center() + Point::new(0, 14),
+        text_style,
+        Alignment::Center,
+    )
+        .draw(&mut display)
+        .unwrap();
 
-        // Write buffer to display
-        display.flush().unwrap();
-        // Clear display buffer
-        display.clear();
-
-        // Wait 5 seconds
-        block!(timer0.wait()).unwrap();
-
-        // Write single-line centered text "Hello World" to buffer
-        Text::with_alignment(
-            "Hello World!",
-            display.bounding_box().center(),
-            text_style_big,
-            Alignment::Center,
-        )
-            .draw(&mut display)
-            .unwrap();
-
-        // Write buffer to display
-        display.flush().unwrap();
-        // Clear display buffer
-        display.clear();
-
-        // Wait 5 seconds
-        block!(timer0.wait()).unwrap();
-    }
+    // Write buffer to display
+    display.flush().unwrap();
+    // Clear display buffer
+    display.clear();
 }

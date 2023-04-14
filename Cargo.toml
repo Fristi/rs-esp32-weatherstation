@@ -13,3 +13,5 @@ esp-println       = { version = "0.4.0", features = ["esp32"] }
 esp-alloc = { version = "0.2.0", features = ["oom-handler"] }
 embedded-graphics = "0.7.1"
 ssd1306           = "0.7.1"
+shared-bus = "0.2.5"
+format_no_std     = "1.0.0"
