@@ -28,11 +28,13 @@ use embedded_graphics::{
 };
 use esp_hal::{clock::ClockControl, gpio::IO, i2c::I2C, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rtc, Delay};
 use esp_backtrace as _;
-use esp_hal::ehal::blocking::i2c::{Read, Write};
+use esp_hal::ehal::blocking::i2c::{Read, Write, WriteRead};
 use esp_println::println;
 use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 use shared_bus::*;
 use format_no_std::show;
+use ssd1306::mode::BufferedGraphicsMode;
+use aht20::{Aht20, Humidity, Temperature};
 
 #[entry]
 fn main() -> ! {
@@ -69,20 +71,42 @@ fn main() -> ! {
 
     let bus = BusManagerSimple::new(i2c);
 
+    let mut display= Ssd1306::new(
+        I2CDisplayInterface::new(bus.acquire_i2c()),
+        DisplaySize128x32,
+        DisplayRotation::Rotate0
+    ).into_buffered_graphics_mode();
+
+    display.init().unwrap();
+
+    let delay_share = DelayShare::new(&mut delay);
+    let mut aht20 = Aht20::new(bus.acquire_i2c(), delay_share).unwrap();
+
+    aht20.calibrate().unwrap();
 
     loop {
         let tvoc = read_tvoc(bus.acquire_i2c(), &mut delay).unwrap();
         let mut buffer_line = [0_u8; 20];
         let line = show(&mut buffer_line, format_args!("{:?} bbp", tvoc)).unwrap();
 
-        write_display(bus.acquire_i2c(), "Gas reading", line);
+        write_display(&mut display, "Gas reading", line);
         delay.delay_ms(2_000_u32);
 
         let res = read_res(bus.acquire_i2c(), &mut delay).unwrap();
-
         let line = show(&mut buffer_line, format_args!("{:?} ohm", res)).unwrap();
 
-        write_display(bus.acquire_i2c(), "Gas resistance", line);
+        write_display(&mut display, "Gas resistance", line);
+        delay.delay_ms(2_000_u32);
+
+        let delay_share = DelayShare::new(&mut delay);
+        let mut aht20 = Aht20::new(bus.acquire_i2c(), delay_share).unwrap();
+
+        let (hum, temp) = aht20.read().unwrap();
+
+        println!("reading: {:?} {:?}", hum.rh(), temp.celsius());
+        let line = show(&mut buffer_line, format_args!("{} % {} C", hum.rh(), temp.celsius())).unwrap();
+
+        write_display(&mut display, "Weather", line);
         delay.delay_ms(2_000_u32);
     }
 }
@@ -101,12 +125,7 @@ fn read_tvoc<I>(i2c: I, delay: &mut Delay) -> Result<u32, Ags02maError> where I 
     ags02ma.read_tvoc()
 }
 
-fn write_display<I>(i2c: I, big_text: &str, small_text: &str) where I : Write {
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(interface, DisplaySize128x32, DisplayRotation::Rotate0)
-        .into_buffered_graphics_mode();
-
-    display.init().unwrap();
+fn write_display<I>(display: &mut Ssd1306<I2CInterface<I>, DisplaySize128x32, BufferedGraphicsMode<DisplaySize128x32>>, big_text: &str, small_text: &str) where I : Write {
 
     // Specify different text styles
     let text_style = MonoTextStyleBuilder::new()
@@ -126,7 +145,7 @@ fn write_display<I>(i2c: I, big_text: &str, small_text: &str) where I : Write {
         text_style_big,
         Alignment::Center,
     )
-        .draw(&mut display)
+        .draw(display)
         .unwrap();
 
     Text::with_alignment(
@@ -135,7 +154,7 @@ fn write_display<I>(i2c: I, big_text: &str, small_text: &str) where I : Write {
         text_style,
         Alignment::Center,
     )
-        .draw(&mut display)
+        .draw(display)
         .unwrap();
 
     // Write buffer to display
