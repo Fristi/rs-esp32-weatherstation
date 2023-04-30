@@ -13,6 +13,7 @@
 
 mod ags02ma;
 mod delayshare;
+mod aht20;
 
 use ags02ma::*;
 use delayshare::*;
@@ -34,7 +35,7 @@ use ssd1306::{prelude::*, I2CDisplayInterface, Ssd1306};
 use shared_bus::*;
 use format_no_std::show;
 use ssd1306::mode::BufferedGraphicsMode;
-use aht20::{Aht20, Humidity, Temperature};
+use aht20::*;
 
 #[entry]
 fn main() -> ! {
@@ -82,6 +83,8 @@ fn main() -> ! {
     let delay_share = DelayShare::new(&mut delay);
     let mut aht20 = Aht20::new(bus.acquire_i2c(), delay_share).unwrap();
 
+    // aht20.reset().unwrap();
+    aht20.reset_registers().unwrap();
     aht20.calibrate().unwrap();
 
     loop {
@@ -98,13 +101,10 @@ fn main() -> ! {
         write_display(&mut display, "Gas resistance", line);
         delay.delay_ms(2_000_u32);
 
-        let delay_share = DelayShare::new(&mut delay);
-        let mut aht20 = Aht20::new(bus.acquire_i2c(), delay_share).unwrap();
+        let mut aht20 = Aht20::new(bus.acquire_i2c(), DelayShare::new(&mut delay)).unwrap();
 
         let (hum, temp) = aht20.read().unwrap();
-
-        println!("reading: {:?} {:?}", hum.rh(), temp.celsius());
-        let line = show(&mut buffer_line, format_args!("{} % {} C", hum.rh(), temp.celsius())).unwrap();
+        let line = show(&mut buffer_line, format_args!("{:.1} RH% {:.1} C", hum.rh(), temp.celsius())).unwrap();
 
         write_display(&mut display, "Weather", line);
         delay.delay_ms(2_000_u32);
