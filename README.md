@@ -1,14 +1,17 @@
-rs-esp32-ssd1306
+rs-esp32-weatherstation
 ---
 
-Simple program to display text on the screen using rs-esp
+Simple program to display some weather information like temperature, humidity and air quality on a OLED displa
 
 ![esp32-ssd1306](result.jpeg)
 
 ### Ingredients
 
 - LilyGO TTGO T-Beam - LoRa 868MHz - NEO-6M GPS - ESP32
-- 0.91 inch OLED Display 128*32 pixels blue - I2C
+- ASAIR DHT20 Temperature and Humidity Sensor
+- ASAIR AGS02MA TVOC Gas Sensor
+- 0.91-inch OLED Display 128*32 pixels white
+
 
 ### Getting started
 
